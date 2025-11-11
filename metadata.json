@@ -1,0 +1,5 @@
+{
+  "name": "Generative Pop Song Studio",
+  "description": "An interactive interface for a generative pop music system. Define song parameters like genre, structure, and lyrical themes to generate unique pop song lyrics using a sophisticated AI model.",
+  "requestFramePermissions": []
+}
