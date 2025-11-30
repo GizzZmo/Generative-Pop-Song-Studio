@@ -447,11 +447,16 @@ export class SongGeneratorComponent implements OnInit {
     try {
       const savedSongsJson = localStorage.getItem(this.STORAGE_KEY);
       if (savedSongsJson) {
-        const songs = JSON.parse(savedSongsJson) as SavedSong[];
+        // Define a type for legacy songs that may have musicalAesthetics
+        interface LegacySavedSong extends Omit<SavedSong, 'sunoPrompt'> {
+          sunoPrompt?: string;
+          musicalAesthetics?: string;
+        }
+        const songs = JSON.parse(savedSongsJson) as LegacySavedSong[];
         // Migration for old saved songs
         this.savedSongs.set(songs.map((s) => ({
             ...s,
-            sunoPrompt: s.sunoPrompt || 'Pop, Generated' // Backward compatibility
+            sunoPrompt: s.sunoPrompt || s.musicalAesthetics || 'Pop, Generated' // Backward compatibility
         })));
       }
     } catch (e) {
