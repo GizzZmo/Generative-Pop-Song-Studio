@@ -333,15 +333,30 @@ export class SongGeneratorComponent implements OnInit {
 
     const { section, revised_lyrics } = analysis.suggestion;
     
+    // Normalize section header to ensure it has brackets
+    let targetSection = section.trim();
+    if (!targetSection.startsWith('[')) targetSection = '[' + targetSection;
+    if (!targetSection.endsWith(']')) targetSection = targetSection + ']';
+    
     // Create a regex to find the section header and its content
-    const sectionRegex = new RegExp(`(${section.replace(/\[/g, '\\[').replace(/\]/g, '\\]')}\\s*\\n)([\\s\\S]*?)(?=\\n\\s*\\[|$)`, 'i');
+    // We strictly match the header, followed by a newline, then content until the next section start or end of string
+    const sectionRegex = new RegExp(`(${targetSection.replace(/\[/g, '\\[').replace(/\]/g, '\\]')}\\s*\\n)([\\s\\S]*?)(?=\\n\\s*\\[|$)`, 'i');
     
     if (sectionRegex.test(currentLyrics)) {
         const newLyrics = currentLyrics.replace(sectionRegex, `$1${revised_lyrics}\n\n`);
         this.generatedLyrics.set(newLyrics.trim());
         this.analysis.set(null); // Hide analysis after applying
     } else {
-        this.error.set(`Could not find section "${section}" to apply suggestion.`);
+        // Fallback: Try matching without assuming strict bracket format if the first attempt failed
+        // This handles cases where the AI returned "Chorus" but the lyrics have "[Chorus]"
+        const looseSectionRegex = new RegExp(`(\\[?${section.replace(/\[|\]/g, '')}\\]?\\s*\\n)([\\s\\S]*?)(?=\\n\\s*\\[|$)`, 'i');
+        if (looseSectionRegex.test(currentLyrics)) {
+           const newLyrics = currentLyrics.replace(looseSectionRegex, `$1${revised_lyrics}\n\n`);
+           this.generatedLyrics.set(newLyrics.trim());
+           this.analysis.set(null);
+        } else {
+           this.error.set(`Could not find section "${section}" to apply suggestion.`);
+        }
     }
   }
 

@@ -232,7 +232,7 @@ export class GeminiService {
     const model = 'gemini-2.5-flash';
 
     const prompt = `
-      You are a world-class music critic and lyricist. Analyze the following song lyrics.
+      You are a world-class music producer and hit-maker. Analyze the following song lyrics for their hit potential.
 
       Song Title: "${title}"
       Lyrical Theme: "${theme}"
@@ -241,17 +241,18 @@ export class GeminiService {
       ${lyrics}
       ---
 
-      Your task is to provide a structured analysis and one suggestion for improvement.
+      Your task is to provide a structured analysis and one specific, high-impact suggestion to elevate the song.
 
       1.  **Analysis**:
           -   **Theme & Mood**: Briefly describe the main theme and emotional tone.
-          -   **Imagery**: Identify and comment on the most powerful imagery or metaphors.
-          -   **Critique**: Provide a brief, constructive critique of the lyrics' strengths and weaknesses (e.g., originality, flow, clichés).
-          -   **Bias Check**: Analyze the lyrics for any potential racial, gender, or cultural stereotypes. If any are found, explain why they might be problematic.
+          -   **Imagery**: Identify the most powerful imagery or metaphors.
+          -   **Critique**: Provide a constructive critique. What works? What is weak? Focus on flow, rhyme scheme, and emotional impact.
+          -   **Bias Check**: Analyze the lyrics for any potential racial, gender, or cultural stereotypes.
 
       2.  **Suggestion**:
-          -   Identify the single most impactful section to revise (e.g., the Chorus, a Verse).
-          -   Rewrite that one section to be more powerful, poetic, or original. Provide only the revised section's text.
+          -   Identify the ONE section that needs the most improvement to make the song a hit (e.g., make the Chorus catchier, or the Bridge more emotional).
+          -   Rewrite that ENTIRE section to be more impactful.
+          -   IMPORTANT: The "section" field must match the exact header used in the provided lyrics (e.g., "[Chorus]" or "[Verse 1]").
 
       Your response MUST be a valid JSON object. Do not include any other text or markdown formatting. The JSON schema is as follows:
     `;
