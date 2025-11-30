@@ -1,9 +1,9 @@
-import { Component, ChangeDetectionStrategy, signal, inject, computed, OnInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, computed, OnInit, ElementRef, ViewChild, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { GeminiService, SongParameters } from '../../services/gemini.service';
-
-declare const htmlToImage: any;
+import { GeminiService, SongParameters, LyricsResponse, LyricAnalysis, ImageParameters } from '../../services/gemini.service';
+import * as htmlToImage from 'html-to-image';
+import { songPresets, SongPreset } from '../../data/song-presets';
 
 export interface SavedSong extends Omit<SongParameters, 'lyricSentiment'> {
   id: string;
@@ -15,7 +15,7 @@ export interface SavedSong extends Omit<SongParameters, 'lyricSentiment'> {
   // Generated data
   title: string;
   lyrics: string;
-  musicalAesthetics: string;
+  sunoPrompt: string; // Renamed from musicalAesthetics
   midi: string;
   coverArtUrl: string;
 }
@@ -33,7 +33,7 @@ export class SongGeneratorComponent implements OnInit {
   private readonly STORAGE_KEY = 'popSongGenerator_savedSongs';
 
   // Form state signals
-  genre = signal('dark synth-pop');
+  genre = signal('Dark Synth-pop');
   style = signal('Artemas, The Weeknd');
   language = signal('English');
   structure = signal('ABABCB');
@@ -49,14 +49,24 @@ export class SongGeneratorComponent implements OnInit {
   isLoadingLyrics = signal(false);
   isLoadingMidi = signal(false);
   isLoadingImage = signal(false);
+  isEditingImage = signal(false);
+  isAnalyzing = signal(false);
   generationStarted = signal(false);
   error = signal<string | null>(null);
   generatedTitle = signal<string | null>(null);
   generatedLyrics = signal<string | null>(null);
-  generatedMusicalAesthetics = signal<string | null>(null);
+  generatedSunoPrompt = signal<string | null>(null);
   generatedMidi = signal<string | null>(null);
   generatedCoverArtUrl = signal<string | null>(null);
+  analysis = signal<LyricAnalysis | null>(null);
   savedSongs = signal<SavedSong[]>([]);
+  showCopySuccess = signal(false);
+  imageEditPrompt = signal('');
+  lastImageParams = signal<ImageParameters | null>(null);
+
+  // Presets
+  presets = songPresets;
+  selectedPresetId = signal<string | null>(null);
 
   isLoading = computed(() => this.isLoadingLyrics() || this.isLoadingMidi() || this.isLoadingImage());
   
@@ -100,8 +110,103 @@ export class SongGeneratorComponent implements OnInit {
     'Bb-Major', 'Bb-Minor', 'Eb-Major', 'Eb-Minor', 'Ab-Major', 'Ab-Minor'
   ];
 
+  genreOptions = [
+    '80s Synthwave',
+    'Alt-Pop',
+    'Ambient Pop',
+    'Bedroom Pop',
+    'City Pop',
+    'Dark Synth-pop',
+    'Dream Pop',
+    'Electro-Pop',
+    'Future Bass',
+    'Hyperpop',
+    'Indie Pop',
+    'J-Pop',
+    'K-Pop',
+    'Lo-fi Hip Hop',
+    'Nu-Disco',
+    'Pop Punk',
+    'Pop Rock',
+    'R&B Pop',
+    'Synthwave',
+    'Tropical House'
+  ];
+
+  availableGenres = computed(() => {
+    const current = this.genre();
+    const list = [...this.genreOptions];
+    // If the current genre isn't in the list (e.g. from a loaded file), add it so the dropdown shows it correctly
+    if (current && !list.includes(current)) {
+       // Check case-insensitive to avoid duplicates
+       if (!list.some(g => g.toLowerCase() === current.toLowerCase())) {
+         list.unshift(current);
+       }
+    }
+    return list.sort();
+  });
+
+  constructor() {
+    effect(() => {
+      // This effect syncs the preset dropdown to "Custom" if the form values
+      // are changed manually to no longer match a known preset.
+      const currentValues = {
+        genre: this.genre(),
+        style: this.style(),
+        language: this.language(),
+        structure: this.structure(),
+        key: this.songKey(),
+        bpm: this.bpm(),
+        lyricTheme: this.lyricTheme(),
+        sentimentAnger: this.sentimentAnger(),
+        sentimentSadness: this.sentimentSadness(),
+        sentimentJoy: this.sentimentJoy(),
+        creativity: this.creativity()
+      };
+
+      const matchedPreset = this.presets.find(p => 
+        p.genre === currentValues.genre &&
+        p.style === currentValues.style &&
+        p.language === currentValues.language &&
+        p.structure === currentValues.structure &&
+        p.key === currentValues.key &&
+        p.bpm === currentValues.bpm &&
+        p.lyricTheme === currentValues.lyricTheme &&
+        p.sentimentAnger === currentValues.sentimentAnger &&
+        p.sentimentSadness === currentValues.sentimentSadness &&
+        p.sentimentJoy === currentValues.sentimentJoy &&
+        p.creativity === currentValues.creativity
+      );
+
+      this.selectedPresetId.set(matchedPreset ? matchedPreset.id : null);
+    }, { allowSignalWrites: true });
+  }
+
   ngOnInit(): void {
     this.loadSongsFromStorage();
+  }
+
+  applyPreset(presetId: string | null): void {
+    if (!presetId) {
+      // User selected "Custom"
+      this.selectedPresetId.set(null);
+      return;
+    }
+    
+    const preset = this.presets.find(p => p.id === presetId);
+    if (preset) {
+      this.genre.set(preset.genre);
+      this.style.set(preset.style);
+      this.language.set(preset.language);
+      this.structure.set(preset.structure);
+      this.songKey.set(preset.key);
+      this.bpm.set(preset.bpm);
+      this.lyricTheme.set(preset.lyricTheme);
+      this.sentimentAnger.set(preset.sentimentAnger);
+      this.sentimentSadness.set(preset.sentimentSadness);
+      this.sentimentJoy.set(preset.sentimentJoy);
+      this.creativity.set(preset.creativity);
+    }
   }
 
   generateSong(): void {
@@ -112,9 +217,11 @@ export class SongGeneratorComponent implements OnInit {
     this.error.set(null);
     this.generatedTitle.set(null);
     this.generatedLyrics.set(null);
-    this.generatedMusicalAesthetics.set(null);
+    this.generatedSunoPrompt.set(null);
     this.generatedMidi.set(null);
     this.generatedCoverArtUrl.set(null);
+    this.analysis.set(null); // Clear previous analysis
+    this.lastImageParams.set(null);
 
     const params: SongParameters = {
       genre: this.genre(),
@@ -132,10 +239,11 @@ export class SongGeneratorComponent implements OnInit {
       .then(response => {
         this.generatedTitle.set(response.title);
         this.generatedLyrics.set(response.lyrics);
-        this.generatedMusicalAesthetics.set(response.musicalAesthetics);
+        this.generatedSunoPrompt.set(response.sunoPrompt);
         this.isLoadingLyrics.set(false);
 
-        const midiPromise = this.geminiService.generateMidi({ ...params, musicalAesthetics: response.musicalAesthetics })
+        // Pass the Suno Prompt (which is now concise) to the other services
+        const midiPromise = this.geminiService.generateMidi({ ...params, sunoPrompt: response.sunoPrompt })
           .then(midiData => {
             this.generatedMidi.set(midiData);
           }).catch(e => {
@@ -145,11 +253,15 @@ export class SongGeneratorComponent implements OnInit {
             this.isLoadingMidi.set(false);
           });
           
-        const imagePromise = this.geminiService.generateImage({
+        const imageParams: ImageParameters = {
           title: response.title,
           lyricTheme: params.lyricTheme,
-          musicalAesthetics: response.musicalAesthetics
-        }).then(imageData => {
+          sunoPrompt: response.sunoPrompt,
+          lyrics: response.lyrics
+        };
+        this.lastImageParams.set(imageParams);
+        
+        const imagePromise = this.geminiService.generateImage(imageParams).then(imageData => {
             this.generatedCoverArtUrl.set(imageData);
         }).catch(e => {
             console.error('Image generation failed:', e);
@@ -167,6 +279,70 @@ export class SongGeneratorComponent implements OnInit {
         this.isLoadingMidi.set(false);
         this.isLoadingImage.set(false);
       });
+  }
+
+  async editCoverArt(): Promise<void> {
+    const originalParams = this.lastImageParams();
+    const editPrompt = this.imageEditPrompt().trim();
+
+    if (!originalParams || !editPrompt) {
+      this.error.set("Please enter an editing instruction.");
+      return;
+    }
+
+    this.isEditingImage.set(true);
+    this.error.set(null);
+    
+    try {
+      const newImageData = await this.geminiService.editImage(originalParams, editPrompt);
+      this.generatedCoverArtUrl.set(newImageData);
+      this.imageEditPrompt.set(''); // Clear prompt on success
+    } catch (e: any) {
+      console.error('Image editing failed:', e);
+      this.error.update(current => (current ? `${current}\n- Image Edit Error: ${e.message}` : `- Image Edit Error: ${e.message}`));
+    } finally {
+      this.isEditingImage.set(false);
+    }
+  }
+
+  async analyzeLyrics(): Promise<void> {
+    const lyrics = this.generatedLyrics();
+    const title = this.generatedTitle();
+    const theme = this.lyricTheme();
+
+    if (!lyrics || !title) return;
+
+    this.isAnalyzing.set(true);
+    this.error.set(null);
+    this.analysis.set(null);
+
+    try {
+      const result = await this.geminiService.analyzeAndSuggest(lyrics, title, theme);
+      this.analysis.set(result);
+    } catch (e: any) {
+      this.error.update(current => (current ? `${current}\n- Analysis Error: ${e.message}` : `- Analysis Error: ${e.message}`));
+    } finally {
+      this.isAnalyzing.set(false);
+    }
+  }
+
+  applySuggestion(): void {
+    const analysis = this.analysis();
+    const currentLyrics = this.generatedLyrics();
+    if (!analysis || !currentLyrics || !analysis.suggestion) return;
+
+    const { section, revised_lyrics } = analysis.suggestion;
+    
+    // Create a regex to find the section header and its content
+    const sectionRegex = new RegExp(`(${section.replace(/\[/g, '\\[').replace(/\]/g, '\\]')}\\s*\\n)([\\s\\S]*?)(?=\\n\\s*\\[|$)`, 'i');
+    
+    if (sectionRegex.test(currentLyrics)) {
+        const newLyrics = currentLyrics.replace(sectionRegex, `$1${revised_lyrics}\n\n`);
+        this.generatedLyrics.set(newLyrics.trim());
+        this.analysis.set(null); // Hide analysis after applying
+    } else {
+        this.error.set(`Could not find section "${section}" to apply suggestion.`);
+    }
   }
 
   downloadMidi(): void {
@@ -201,14 +377,30 @@ export class SongGeneratorComponent implements OnInit {
     if (!element || !this.generatedCoverArtUrl()) return;
 
     try {
-      const dataUrl = await htmlToImage.toPng(element);
+      const dataUrl = await htmlToImage.toPng(element, {
+        skipFonts: true, // Prevent attempting to inline external fonts to avoid CORS errors
+        filter: (node) => {
+          // Explicitly skip external link tags and style tags that might import fonts
+          return node.tagName !== 'LINK' && node.tagName !== 'STYLE';
+        }
+      });
       const link = document.createElement('a');
       link.download = this.sanitizedImageFilename();
       link.href = dataUrl;
       link.click();
     } catch (error) {
       console.error('Failed to download cover art:', error);
-      this.error.set('Could not download the cover art image.');
+      this.error.set('Could not download the cover art image due to a browser security restriction. Please try taking a screenshot manually.');
+    }
+  }
+
+  copySunoPrompt(): void {
+    const prompt = this.generatedSunoPrompt();
+    if (prompt) {
+        navigator.clipboard.writeText(prompt).then(() => {
+            this.showCopySuccess.set(true);
+            setTimeout(() => this.showCopySuccess.set(false), 2000);
+        });
     }
   }
   
@@ -238,7 +430,12 @@ export class SongGeneratorComponent implements OnInit {
     try {
       const savedSongsJson = localStorage.getItem(this.STORAGE_KEY);
       if (savedSongsJson) {
-        this.savedSongs.set(JSON.parse(savedSongsJson));
+        const songs = JSON.parse(savedSongsJson);
+        // Migration for old saved songs
+        this.savedSongs.set(songs.map((s: any) => ({
+            ...s,
+            sunoPrompt: s.sunoPrompt || s.musicalAesthetics || 'Pop, Generated' // Backward compatibility
+        })));
       }
     } catch (e) {
       console.error('Failed to load songs from local storage:', e);
@@ -275,7 +472,7 @@ export class SongGeneratorComponent implements OnInit {
       // Generated
       title: this.generatedTitle()!,
       lyrics: this.generatedLyrics()!,
-      musicalAesthetics: this.generatedMusicalAesthetics()!,
+      sunoPrompt: this.generatedSunoPrompt()!,
       midi: this.generatedMidi()!,
       coverArtUrl: this.generatedCoverArtUrl()!,
     };
@@ -304,7 +501,7 @@ export class SongGeneratorComponent implements OnInit {
     // Set generated output
     this.generatedTitle.set(songToLoad.title);
     this.generatedLyrics.set(songToLoad.lyrics);
-    this.generatedMusicalAesthetics.set(songToLoad.musicalAesthetics || '');
+    this.generatedSunoPrompt.set(songToLoad.sunoPrompt || '');
     this.generatedMidi.set(songToLoad.midi);
     this.generatedCoverArtUrl.set(songToLoad.coverArtUrl || null);
     
@@ -314,6 +511,7 @@ export class SongGeneratorComponent implements OnInit {
     this.isLoadingLyrics.set(false);
     this.isLoadingMidi.set(false);
     this.isLoadingImage.set(false);
+    this.analysis.set(null);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -374,8 +572,8 @@ export class SongGeneratorComponent implements OnInit {
     const content = `
 # ${this.generatedTitle()}
 
-## Musical Blueprint
-${this.generatedMusicalAesthetics()}
+## Suno AI Prompt
+${this.generatedSunoPrompt()}
 
 ## Lyrics
 ${this.generatedLyrics()}

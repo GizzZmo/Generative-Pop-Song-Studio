@@ -11,19 +11,35 @@ export interface SongParameters {
   lyricSentiment: string;
   language: string;
   creativity: number;
-  musicalAesthetics?: string;
+  sunoPrompt?: string;
 }
 
 export interface ImageParameters {
     title: string;
     lyricTheme: string;
-    musicalAesthetics?: string;
+    lyrics: string; // Added lyrics for context
+    sunoPrompt?: string;
 }
 
 export interface LyricsResponse {
   title: string;
   lyrics: string;
-  musicalAesthetics: string;
+  sunoPrompt: string;
+}
+
+export interface LyricAnalysis {
+  theme: string;
+  mood: string;
+  imagery: string;
+  critique: string;
+  bias_check: {
+    is_biased: boolean;
+    reasoning: string;
+  };
+  suggestion: {
+    section: string;
+    revised_lyrics: string;
+  };
 }
 
 @Injectable({
@@ -46,17 +62,17 @@ export class GeminiService {
     const model = 'gemini-2.5-flash';
 
     const prompt = `
-      You are the Lyrical and Musical Concept Generation Engine for a sophisticated pop song generator.
+      You are the Creative Assistant for a pop song generator.
       Your task is to generate three things based on the user's specifications:
       1. A creative and fitting song title.
-      2. A "Musical Blueprint": a detailed, evocative description of the song's musical arrangement, instrumentation, and overall vibe. This blueprint will be used by another AI to generate the actual music, so be descriptive (e.g., "A driving synth-bassline with a punchy 80s drum machine beat. Hazy, atmospheric pads create a melancholic mood, while a sharp, crystalline synth lead plays the main melody. The chorus should feel bigger with added reverb and subtle harmony layers.").
+      2. A "Suno Prompt": A concise, comma-separated string of musical tags describing style, genre, instruments, and mood, optimized for the Suno AI "Style of Music" field (e.g., "Dark Synth-pop, Male Vocals, Driving Bass, Melancholic, 115bpm").
       3. The complete song lyrics.
 
       The output format MUST be structured exactly as follows, with each section clearly marked:
 
       Title: [Your Song Title in the specified language]
 
-      Musical Blueprint: [Your detailed musical description in English]
+      Suno Prompt: [Your concise comma-separated tags in English]
 
       [Verse 1]
       (lyrics in the specified language)
@@ -81,7 +97,7 @@ export class GeminiService {
       - Creativity / "Oddball" Factor (0=formulaic, 100=highly experimental): ${params.creativity}%
       ---
 
-      Generate the title, musical blueprint, and lyrics now.
+      Generate the title, Suno prompt, and lyrics now.
     `;
 
     try {
@@ -97,10 +113,11 @@ export class GeminiService {
       
       const trimmedText = text.trim();
       const titleMatch = trimmedText.match(/^Title:\s*(.*)$/im);
-      const blueprintMatch = trimmedText.match(/^Musical Blueprint:\s*([\s\S]*?)(?=\n\s*\[|$)/im);
+      // Match "Suno Prompt:" or legacy "Musical Blueprint:" just in case
+      const promptMatch = trimmedText.match(/^(?:Suno Prompt|Musical Blueprint):\s*([\s\S]*?)(?=\n\s*\[|$)/im);
       
       const title = titleMatch ? titleMatch[1].trim() : 'Untitled Pop Song';
-      const musicalAesthetics = blueprintMatch ? blueprintMatch[1].trim() : 'No musical blueprint generated.';
+      const sunoPrompt = promptMatch ? promptMatch[1].trim() : 'Pop, Melodic, 120bpm';
 
       const lyricStartIndex = trimmedText.search(/^\s*\[/m);
       let lyrics = "Lyrics not generated.";
@@ -109,11 +126,11 @@ export class GeminiService {
       }
 
       // Fallback if parsing fails but we have some text
-      if (title === 'Untitled Pop Song' && musicalAesthetics === 'No musical blueprint generated.' && lyrics === 'Lyrics not generated.') {
+      if (title === 'Untitled Pop Song' && sunoPrompt === 'Pop, Melodic, 120bpm' && lyrics === 'Lyrics not generated.') {
           lyrics = trimmedText; // Assume the whole response is lyrics if we can't parse it
       }
 
-      return { title, lyrics, musicalAesthetics };
+      return { title, lyrics, sunoPrompt };
 
     } catch (error) {
       console.error('Error calling Gemini API for lyrics:', error);
@@ -125,12 +142,22 @@ export class GeminiService {
     const model = 'imagen-4.0-generate-001';
     
     const prompt = `
-      Create a vibrant, high-contrast, cyberpunk-themed album cover art.
-      The central theme is "${params.lyricTheme}".
-      The musical style is described as: "${params.musicalAesthetics}".
-      The artwork should be visually striking, with neon glows, futuristic cityscapes, or abstract digital patterns.
-      Prominently feature the song title "${params.title}" in a stylized, futuristic font that fits the cyberpunk aesthetic.
-      The style should be a mix of digital painting and photographic elements.
+      Create a vibrant, high-contrast, cyberpunk-themed album cover.
+      Art style: a mix of futuristic digital painting and hyper-realism.
+      The image MUST visually represent the themes, mood, and key imagery from the provided song lyrics.
+      
+      Song Title: "${params.title}"
+      Lyrical Theme: "${params.lyricTheme}"
+      Musical Style: "${params.sunoPrompt}"
+      
+      Lyrics for Context:
+      ---
+      ${params.lyrics}
+      ---
+      
+      Incorporate neon glows, chrome reflections, and abstract digital light patterns.
+      The image must include the text "${params.title}" written in a stylized, futuristic, neon font. The text should be clearly legible.
+      The composition should be visually striking and centered.
       Aspect ratio: 1:1.
     `;
 
@@ -146,7 +173,7 @@ export class GeminiService {
       });
 
       if (!response.generatedImages || response.generatedImages.length === 0) {
-        throw new Error('API did not return any images.');
+        throw new Error('API did not return any images. This might be due to a safety policy violation. Try a different theme.');
       }
 
       const base64ImageBytes = response.generatedImages[0].image.imageBytes;
@@ -156,62 +183,190 @@ export class GeminiService {
        throw new Error('Failed to generate cover art via Gemini API.');
     }
   }
-  
-  async generateMidi(params: SongParameters): Promise<string> {
+
+  async editImage(originalParams: ImageParameters, editPrompt: string): Promise<string> {
+    const model = 'imagen-4.0-generate-001';
+    
+    const prompt = `
+      You are an expert at re-imagining album cover art.
+      The original concept was a vibrant, high-contrast, cyberpunk-themed album cover for a song titled "${originalParams.title}".
+      The original lyrical theme was "${originalParams.lyricTheme}" and the musical style was "${originalParams.sunoPrompt}".
+      The original art was meant to visually represent these lyrics:
+      ---
+      ${originalParams.lyrics}
+      ---
+
+      Now, apply the following edit instruction to that original concept: "${editPrompt}".
+
+      Generate a NEW album cover that incorporates this change. 
+      The text "${originalParams.title}" must still be present and legible in a stylized, futuristic, neon font.
+      Maintain the overall cyberpunk aesthetic but with the requested modification.
+      The image must still be visually striking and centered.
+      Aspect ratio: 1:1.
+    `;
+
+    try {
+      const response = await this.ai.models.generateImages({
+        model,
+        prompt: prompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/png',
+          aspectRatio: '1:1',
+        },
+      });
+
+      if (!response.generatedImages || response.generatedImages.length === 0) {
+        throw new Error('API did not return any edited images. This might be due to a safety policy violation. Try a different prompt.');
+      }
+
+      const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+      return `data:image/png;base64,${base64ImageBytes}`;
+    } catch(error) {
+       console.error('Error calling Gemini API for image editing:', error);
+       throw new Error('Failed to edit cover art via Gemini API.');
+    }
+  }
+
+  async analyzeAndSuggest(lyrics: string, title: string, theme: string): Promise<LyricAnalysis> {
     const model = 'gemini-2.5-flash';
 
     const prompt = `
-      You are an expert Symbolic Music Engine (SME). Your task is to generate a multi-track MIDI file based on the user's song specifications and the provided musical blueprint.
+      You are a world-class music critic and lyricist. Analyze the following song lyrics.
 
-      The generated MIDI file should be a complete song, approximately 60-90 seconds long. It must include distinct, instrument-separated tracks as described in the blueprint (typically drums, bass, chords, and melody). The entire composition must adhere to the specified song structure.
+      Song Title: "${title}"
+      Lyrical Theme: "${theme}"
+      Lyrics:
+      ---
+      ${lyrics}
+      ---
 
-      ---
-      SONG SPECIFICATIONS:
-      - Genre: ${params.genre}
-      - Style Influences: ${params.style}
-      - Song Structure to Follow: ${params.structure}
-      - Key: ${params.key}
-      - BPM: ${params.bpm}
-      - Musical Blueprint: ${params.musicalAesthetics}
-      ---
-      
-      Your response MUST BE ONLY the raw base64 encoded string of the MIDI file.
-      Do NOT include the word "json", markdown backticks (\`\`\`), or any other text, labels, or explanations.
-      The entire response should be a single, valid base64 string.
+      Your task is to provide a structured analysis and one suggestion for improvement.
+
+      1.  **Analysis**:
+          -   **Theme & Mood**: Briefly describe the main theme and emotional tone.
+          -   **Imagery**: Identify and comment on the most powerful imagery or metaphors.
+          -   **Critique**: Provide a brief, constructive critique of the lyrics' strengths and weaknesses (e.g., originality, flow, clichés).
+          -   **Bias Check**: Analyze the lyrics for any potential racial, gender, or cultural stereotypes. If any are found, explain why they might be problematic.
+
+      2.  **Suggestion**:
+          -   Identify the single most impactful section to revise (e.g., the Chorus, a Verse).
+          -   Rewrite that one section to be more powerful, poetic, or original. Provide only the revised section's text.
+
+      Your response MUST be a valid JSON object. Do not include any other text or markdown formatting. The JSON schema is as follows:
     `;
-    
+
+    const analysisSchema = {
+      type: Type.OBJECT,
+      properties: {
+        theme: { type: Type.STRING, description: "The main theme and message of the lyrics." },
+        mood: { type: Type.STRING, description: "The emotional tone or atmosphere of the song." },
+        imagery: { type: Type.STRING, description: "Analysis of the song's use of imagery and metaphors." },
+        critique: { type: Type.STRING, description: "Constructive critique of the lyrics." },
+        bias_check: {
+          type: Type.OBJECT,
+          properties: {
+            is_biased: { type: Type.BOOLEAN, description: "True if potential bias is detected, otherwise false." },
+            reasoning: { type: Type.STRING, description: "Explanation if bias is detected, or a confirmation of no bias found." },
+          },
+          required: ["is_biased", "reasoning"],
+        },
+        suggestion: {
+          type: Type.OBJECT,
+          properties: {
+            section: { type: Type.STRING, description: "The section header of the revised lyrics (e.g., '[Chorus]')." },
+            revised_lyrics: { type: Type.STRING, description: "The full text of the revised lyric section." },
+          },
+          required: ["section", "revised_lyrics"],
+        },
+      },
+      required: ["theme", "mood", "imagery", "critique", "bias_check", "suggestion"],
+    };
+
     try {
       const response = await this.ai.models.generateContent({
         model,
         contents: prompt,
         config: {
-          responseMimeType: "text/plain",
-        }
+          responseMimeType: "application/json",
+          responseSchema: analysisSchema,
+        },
       });
-      
-      const text = response.text.trim();
-      
+      const text = response.text;
       if (!text) {
+        throw new Error('Received an empty analysis from the API.');
+      }
+      return JSON.parse(text) as LyricAnalysis;
+    } catch (error) {
+      console.error('Error calling Gemini API for lyric analysis:', error);
+      throw new Error('Failed to analyze lyrics via Gemini API.');
+    }
+  }
+  
+  async generateMidi(params: SongParameters): Promise<string> {
+    const model = 'gemini-2.5-flash';
+  
+    const prompt = `
+      You are an expert Symbolic Music Engine (SME). Your task is to generate a multi-track MIDI file as a base64 encoded string.
+      The MIDI file should be a short demo, approximately 30 seconds long, based on the following specifications.
+      
+      SONG SPECIFICATIONS:
+      - Genre: ${params.genre}
+      - Style: ${params.style}
+      - Key: ${params.key}
+      - BPM: ${params.bpm}
+      - Suno Prompt/Vibe: ${params.sunoPrompt}
+      
+      IMPORTANT RESPONSE RULES:
+      1. Return ONLY the raw Base64 encoded string of the MIDI file.
+      2. The binary data MUST start with the standard MIDI header "MThd" (Base64 starts with TVRoZ).
+      3. Do NOT use JSON. 
+      4. Do NOT use Markdown code blocks (like \`\`\` or \`\`\`json).
+      5. Do NOT add any explanation text.
+      6. The output must be one continuous string of Base64 characters.
+    `;
+  
+    try {
+      const response = await this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: 'text/plain', // Use text/plain to avoid JSON parsing limits on large base64 strings
+        },
+      });
+  
+      const text = response.text;
+      if (!text || text.trim() === '') {
         throw new Error('Received an empty MIDI response from the API.');
       }
+  
+      // Aggressive cleaning to remove any whitespace, newlines, markdown, or non-base64 characters
+      let base64Midi = text.replace(/[^A-Za-z0-9+/=]/g, '');
+      
+      // Fix padding if necessary (Base64 length must be a multiple of 4)
+      const padding = (4 - (base64Midi.length % 4)) % 4;
+      if (padding > 0) {
+        base64Midi += '='.repeat(padding);
+      }
+      
+      if (base64Midi.length === 0) {
+        throw new Error('MIDI generation failed: Output contained no valid Base64 data.');
+      }
 
-      // Clean up potential markdown formatting that might still slip through
-      const cleanBase64 = text.replace(/```/g, '').replace(/midi_base64:/, '').trim();
-
-      // The atob function will throw an error if the string is not valid base64.
+      // Final decoding check to ensure validity before returning
       try {
-        atob(cleanBase64);
+        atob(base64Midi);
       } catch (e) {
-        console.error('Failed to decode base64 string:', cleanBase64, e);
+        console.error('AI returned invalid Base64 data:', e, 'Raw cleaned data start:', base64Midi.substring(0, 50));
         throw new Error('AI returned invalid Base64 data for the MIDI file.');
       }
   
-      return cleanBase64;
+      return base64Midi;
   
     } catch (error) {
       console.error('Error calling Gemini API for MIDI generation:', error);
       if (error instanceof Error) {
-         throw error; // Re-throw the specific error
+        throw error;
       }
       throw new Error('Failed to generate MIDI via Gemini API.');
     }
