@@ -1,9 +1,9 @@
 import { Component, ChangeDetectionStrategy, signal, inject, computed, OnInit, ElementRef, ViewChild, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { GeminiService, SongParameters, LyricsResponse, LyricAnalysis, ImageParameters } from '../../services/gemini.service';
+import { GeminiService, SongParameters, LyricAnalysis, ImageParameters } from '../../services/gemini.service';
 import * as htmlToImage from 'html-to-image';
-import { songPresets, SongPreset } from '../../data/song-presets';
+import { songPresets } from '../../data/song-presets';
 
 export interface SavedSong extends Omit<SongParameters, 'lyricSentiment'> {
   id: string;
@@ -297,9 +297,10 @@ export class SongGeneratorComponent implements OnInit {
       const newImageData = await this.geminiService.editImage(originalParams, editPrompt);
       this.generatedCoverArtUrl.set(newImageData);
       this.imageEditPrompt.set(''); // Clear prompt on success
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Image editing failed:', e);
-      this.error.update(current => (current ? `${current}\n- Image Edit Error: ${e.message}` : `- Image Edit Error: ${e.message}`));
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.error.update(current => (current ? `${current}\n- Image Edit Error: ${errorMessage}` : `- Image Edit Error: ${errorMessage}`));
     } finally {
       this.isEditingImage.set(false);
     }
@@ -319,8 +320,9 @@ export class SongGeneratorComponent implements OnInit {
     try {
       const result = await this.geminiService.analyzeAndSuggest(lyrics, title, theme);
       this.analysis.set(result);
-    } catch (e: any) {
-      this.error.update(current => (current ? `${current}\n- Analysis Error: ${e.message}` : `- Analysis Error: ${e.message}`));
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.error.update(current => (current ? `${current}\n- Analysis Error: ${errorMessage}` : `- Analysis Error: ${errorMessage}`));
     } finally {
       this.isAnalyzing.set(false);
     }
@@ -445,11 +447,11 @@ export class SongGeneratorComponent implements OnInit {
     try {
       const savedSongsJson = localStorage.getItem(this.STORAGE_KEY);
       if (savedSongsJson) {
-        const songs = JSON.parse(savedSongsJson);
+        const songs = JSON.parse(savedSongsJson) as SavedSong[];
         // Migration for old saved songs
-        this.savedSongs.set(songs.map((s: any) => ({
+        this.savedSongs.set(songs.map((s) => ({
             ...s,
-            sunoPrompt: s.sunoPrompt || s.musicalAesthetics || 'Pop, Generated' // Backward compatibility
+            sunoPrompt: s.sunoPrompt || 'Pop, Generated' // Backward compatibility
         })));
       }
     } catch (e) {

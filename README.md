@@ -1,5 +1,10 @@
 # Generative Pop Song Studio
 
+[![CI](https://github.com/GizzZmo/Generative-Pop-Song-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/GizzZmo/Generative-Pop-Song-Studio/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-20-green.svg)](https://nodejs.org/)
+[![Angular](https://img.shields.io/badge/Angular-20-red.svg)](https://angular.io/)
+
 ### Run and deploy your AI Studio app
 
 This contains everything you need to run your app locally.
