@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { GoogleGenAI, Type } from '@google/genai';
+import { SongEvaluationMetrics } from './plugins/model-plugin.interface';
 
 export interface SongParameters {
   genre: string;
@@ -41,6 +42,9 @@ export interface LyricAnalysis {
     revised_lyrics: string;
   };
 }
+
+// Re-export SongEvaluationMetrics from the plugin interface for backward compatibility
+export type { SongEvaluationMetrics } from './plugins/model-plugin.interface';
 
 @Injectable({
   providedIn: 'root',
@@ -370,6 +374,117 @@ export class GeminiService {
         throw error;
       }
       throw new Error('Failed to generate MIDI via Gemini API.');
+    }
+  }
+
+  /**
+   * Evaluate song quality with detailed metrics for musicality and lyric quality
+   */
+  async evaluateSong(lyrics: string, title: string, params: SongParameters): Promise<SongEvaluationMetrics> {
+    const model = 'gemini-2.5-flash';
+
+    const prompt = `
+      You are an expert music critic and songwriter. Evaluate the following song for its quality and hit potential.
+      Provide detailed metrics and actionable feedback.
+
+      Song Title: "${title}"
+      Genre: ${params.genre}
+      Style: ${params.style}
+      Theme: ${params.lyricTheme}
+      
+      Lyrics:
+      ---
+      ${lyrics}
+      ---
+
+      Evaluate the song across multiple dimensions and provide scores from 0-100.
+      Be critical but constructive. Consider commercial appeal, artistic merit, and technical quality.
+    `;
+
+    const evaluationSchema = {
+      type: Type.OBJECT,
+      properties: {
+        overallScore: {
+          type: Type.NUMBER,
+          description: 'Overall quality score from 0-100',
+        },
+        lyrical: {
+          type: Type.OBJECT,
+          properties: {
+            rhymeConsistency: {
+              type: Type.NUMBER,
+              description: 'Rhyme scheme consistency from 0-100',
+            },
+            emotionalCoherence: {
+              type: Type.NUMBER,
+              description: 'Emotional coherence from 0-100',
+            },
+            originality: {
+              type: Type.NUMBER,
+              description: 'Originality of themes and phrases from 0-100',
+            },
+            clarity: {
+              type: Type.NUMBER,
+              description: 'Clarity and readability from 0-100',
+            },
+          },
+          required: ['rhymeConsistency', 'emotionalCoherence', 'originality', 'clarity'],
+        },
+        musical: {
+          type: Type.OBJECT,
+          properties: {
+            melodicInterest: {
+              type: Type.NUMBER,
+              description: 'Melodic interest and catchiness from 0-100',
+            },
+            harmonicQuality: {
+              type: Type.NUMBER,
+              description: 'Harmonic progression quality from 0-100',
+            },
+            rhythmicConsistency: {
+              type: Type.NUMBER,
+              description: 'Rhythmic consistency from 0-100',
+            },
+            structureQuality: {
+              type: Type.NUMBER,
+              description: 'Structure and arrangement quality from 0-100',
+            },
+          },
+          required: ['melodicInterest', 'harmonicQuality', 'rhythmicConsistency', 'structureQuality'],
+        },
+        feedback: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Detailed feedback points',
+        },
+        improvements: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Suggested improvements',
+        },
+      },
+      required: ['overallScore', 'lyrical', 'musical', 'feedback', 'improvements'],
+    };
+
+    try {
+      const response = await this.ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: evaluationSchema,
+        },
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error('Received an empty evaluation from the API.');
+      }
+
+      return JSON.parse(text) as SongEvaluationMetrics;
+    } catch (error) {
+      console.error('Error calling Gemini API for song evaluation:', error);
+      throw new Error('Failed to evaluate song via Gemini API.');
     }
   }
 }

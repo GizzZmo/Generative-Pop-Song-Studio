@@ -1,0 +1,94 @@
+<div class="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-indigo-500/30 overflow-hidden">
+  <!-- Header -->
+  <button 
+    (click)="toggleExpanded()" 
+    class="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-700/30 transition-colors">
+    <div class="flex items-center gap-3">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+      </svg>
+      <span class="font-orbitron text-white text-sm">Model Registry</span>
+      <span class="text-xs text-gray-500">({{ summary().total }} plugins)</span>
+    </div>
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      class="h-4 w-4 text-gray-400 transition-transform"
+      [class.rotate-180]="isExpanded()"
+      fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  </button>
+
+  <!-- Expanded Content -->
+  @if (isExpanded()) {
+    <div class="px-4 pb-4 space-y-4 border-t border-gray-700">
+      @if (plugins().length === 0) {
+        <div class="py-6 text-center">
+          <p class="text-gray-500 text-sm">No model plugins registered</p>
+          <p class="text-gray-600 text-xs mt-1">Plugins can be registered programmatically via the ModelRegistryService</p>
+        </div>
+      } @else {
+        <!-- Plugin Types -->
+        @for (type of pluginTypes; track type) {
+          @let typePlugins = getPluginsByType(type);
+          @if (typePlugins.length > 0) {
+            <div class="pt-3">
+              <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                <span>{{ getPluginTypeIcon(type) }}</span>
+                <span>{{ getPluginTypeName(type) }}</span>
+              </h4>
+              <div class="space-y-2">
+                @for (entry of typePlugins; track entry.plugin.config.id) {
+                  <div 
+                    class="flex items-center justify-between p-3 rounded-lg border transition-all"
+                    [class.border-cyan-500/50]="entry.isActive"
+                    [class.bg-cyan-900/20]="entry.isActive"
+                    [class.border-gray-700]="!entry.isActive"
+                    [class.bg-gray-800/50]="!entry.isActive">
+                    <div class="flex items-center gap-3">
+                      <div 
+                        class="w-2 h-2 rounded-full"
+                        [class.bg-green-400]="isPluginReady(entry.plugin.config.id)"
+                        [class.bg-gray-500]="!isPluginReady(entry.plugin.config.id)">
+                      </div>
+                      <div>
+                        <div class="font-medium text-white text-sm">{{ entry.plugin.config.name }}</div>
+                        <div class="text-xs text-gray-500">
+                          v{{ entry.plugin.config.version }} · {{ entry.plugin.config.description }}
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      @if (entry.isActive) {
+                        <span class="text-xs text-cyan-400 font-medium">Active</span>
+                        <button 
+                          (click)="deactivatePlugin(entry.plugin.config.id)"
+                          class="text-xs text-gray-400 hover:text-red-400 transition-colors">
+                          Deactivate
+                        </button>
+                      } @else {
+                        <button 
+                          (click)="activatePlugin(entry.plugin.config.id)"
+                          [disabled]="!isPluginReady(entry.plugin.config.id)"
+                          class="text-xs text-indigo-400 hover:text-indigo-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors">
+                          Activate
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        }
+      }
+
+      <!-- Registry Info -->
+      <div class="pt-3 border-t border-gray-700">
+        <p class="text-xs text-gray-500">
+          The Model Registry allows you to swap AI model backends. Each plugin type can have one active plugin at a time.
+        </p>
+      </div>
+    </div>
+  }
+</div>

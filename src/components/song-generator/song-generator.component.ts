@@ -1,9 +1,11 @@
 import { Component, ChangeDetectionStrategy, signal, inject, computed, OnInit, ElementRef, ViewChild, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { GeminiService, SongParameters, LyricAnalysis, ImageParameters } from '../../services/gemini.service';
+import { GeminiService, SongParameters, LyricAnalysis, ImageParameters, SongEvaluationMetrics } from '../../services/gemini.service';
 import * as htmlToImage from 'html-to-image';
 import { songPresets } from '../../data/song-presets';
+import { EvaluationMetricsComponent } from '../evaluation-metrics/evaluation-metrics.component';
+import { ModelRegistryComponent } from '../model-registry/model-registry.component';
 
 export interface SavedSong extends Omit<SongParameters, 'lyricSentiment'> {
   id: string;
@@ -24,7 +26,7 @@ export interface SavedSong extends Omit<SongParameters, 'lyricSentiment'> {
   selector: 'app-song-generator',
   templateUrl: './song-generator.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, CommonModule]
+  imports: [FormsModule, CommonModule, EvaluationMetricsComponent, ModelRegistryComponent]
 })
 export class SongGeneratorComponent implements OnInit {
   @ViewChild('coverArtContainer') coverArtContainer!: ElementRef<HTMLDivElement>;
@@ -51,6 +53,7 @@ export class SongGeneratorComponent implements OnInit {
   isLoadingImage = signal(false);
   isEditingImage = signal(false);
   isAnalyzing = signal(false);
+  isEvaluating = signal(false);
   generationStarted = signal(false);
   error = signal<string | null>(null);
   generatedTitle = signal<string | null>(null);
@@ -59,6 +62,7 @@ export class SongGeneratorComponent implements OnInit {
   generatedMidi = signal<string | null>(null);
   generatedCoverArtUrl = signal<string | null>(null);
   analysis = signal<LyricAnalysis | null>(null);
+  evaluation = signal<SongEvaluationMetrics | null>(null);
   savedSongs = signal<SavedSong[]>([]);
   showCopySuccess = signal(false);
   imageEditPrompt = signal('');
@@ -338,6 +342,39 @@ export class SongGeneratorComponent implements OnInit {
       this.error.update(current => (current ? `${current}\n- Analysis Error: ${errorMessage}` : `- Analysis Error: ${errorMessage}`));
     } finally {
       this.isAnalyzing.set(false);
+    }
+  }
+
+  async evaluateSong(): Promise<void> {
+    const lyrics = this.generatedLyrics();
+    const title = this.generatedTitle();
+
+    if (!lyrics || !title) return;
+
+    this.isEvaluating.set(true);
+    this.error.set(null);
+    this.evaluation.set(null);
+
+    const params: SongParameters = {
+      genre: this.genre(),
+      style: this.style(),
+      structure: this.structure(),
+      key: this.songKey(),
+      bpm: this.bpm(),
+      lyricTheme: this.lyricTheme(),
+      language: this.language(),
+      lyricSentiment: this.buildLyricSentimentString(),
+      creativity: this.creativity()
+    };
+
+    try {
+      const result = await this.geminiService.evaluateSong(lyrics, title, params);
+      this.evaluation.set(result);
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.error.update(current => (current ? `${current}\n- Evaluation Error: ${errorMessage}` : `- Evaluation Error: ${errorMessage}`));
+    } finally {
+      this.isEvaluating.set(false);
     }
   }
 

@@ -163,11 +163,19 @@ If you hit a reproducible bug, open an issue and include minimal reproduction st
 
 ## Roadmap
 
-Planned items (examples)
-- Plugin interface for model types
-- Web-based interactive composer UI
-- Model registry + downloader
-- Evaluation metrics for musicality & lyric quality
+### Implemented Features ✅
+
+- **Plugin interface for model types** - Extensible plugin architecture allowing different AI backends to be swapped. See `src/services/plugins/` for interfaces and implementations.
+- **Web-based interactive composer UI** - Full Angular-based web application with cyberpunk-themed UI for song generation.
+- **Model registry + downloader** - Model registry service for managing and activating different model plugins.
+- **Evaluation metrics for musicality & lyric quality** - Comprehensive song evaluation with detailed metrics for lyrical quality (rhyme consistency, emotional coherence, originality, clarity) and musical quality (melodic interest, harmonic quality, rhythmic consistency, structure quality).
+
+### Planned Items (Future)
+
+- Additional model plugin implementations (OpenAI, Anthropic, local models)
+- Audio playback and synthesis features
+- Collaborative songwriting features
+- Export to additional audio formats
 
 Contributions welcome — open issues to propose or claim items.
 
