@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { GoogleGenAI, Type } from '@google/genai';
+import { SongEvaluationMetrics } from './plugins/model-plugin.interface';
 
 export interface SongParameters {
   genre: string;
@@ -42,43 +43,8 @@ export interface LyricAnalysis {
   };
 }
 
-/**
- * Evaluation metrics for song quality assessment
- */
-export interface SongEvaluationMetrics {
-  /** Overall quality score (0-100) */
-  overallScore: number;
-
-  /** Lyrical metrics */
-  lyrical: {
-    /** Rhyme scheme consistency (0-100) */
-    rhymeConsistency: number;
-    /** Emotional coherence (0-100) */
-    emotionalCoherence: number;
-    /** Originality of themes and phrases (0-100) */
-    originality: number;
-    /** Clarity and readability (0-100) */
-    clarity: number;
-  };
-
-  /** Musical metrics */
-  musical: {
-    /** Melodic interest and catchiness (0-100) */
-    melodicInterest: number;
-    /** Harmonic progression quality (0-100) */
-    harmonicQuality: number;
-    /** Rhythmic consistency (0-100) */
-    rhythmicConsistency: number;
-    /** Structure and arrangement (0-100) */
-    structureQuality: number;
-  };
-
-  /** Detailed feedback */
-  feedback: string[];
-
-  /** Suggested improvements */
-  improvements: string[];
-}
+// Re-export SongEvaluationMetrics from the plugin interface for backward compatibility
+export type { SongEvaluationMetrics } from './plugins/model-plugin.interface';
 
 @Injectable({
   providedIn: 'root',
