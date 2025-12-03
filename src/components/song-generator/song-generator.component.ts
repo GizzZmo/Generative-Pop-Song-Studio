@@ -77,6 +77,19 @@ export class SongGeneratorComponent implements OnInit {
       .slice(0, 50);
   }
 
+  private getSentimentLevel(value: number): string {
+    if (value >= 70) return 'high';
+    if (value >= 30) return 'medium';
+    return 'low';
+  }
+
+  private buildLyricSentimentString(): string {
+    const anger = this.sentimentAnger();
+    const sadness = this.sentimentSadness();
+    const joy = this.sentimentJoy();
+    return `${this.getSentimentLevel(anger)}-anger (${anger}%), ${this.getSentimentLevel(sadness)}-sadness (${sadness}%), ${this.getSentimentLevel(joy)}-joy (${joy}%)`;
+  }
+
   sanitizedMidiFilename = computed(() => {
     return this.sanitizeFilename(this.generatedTitle() || 'song_output') + '.mid';
   });
@@ -231,7 +244,7 @@ export class SongGeneratorComponent implements OnInit {
       bpm: this.bpm(),
       lyricTheme: this.lyricTheme(),
       language: this.language(),
-      lyricSentiment: `high-anger (${this.sentimentAnger()}%), low-sadness (${this.sentimentSadness()}%), low-joy (${this.sentimentJoy()}%)`,
+      lyricSentiment: this.buildLyricSentimentString(),
       creativity: this.creativity()
     };
 
